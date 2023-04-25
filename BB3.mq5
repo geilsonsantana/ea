@@ -29,6 +29,11 @@ input double iEntradaBuy = 1;                 // --- Entrada Buy
 input double iEntradaSel = 1;                 // --- Entrada Sel
 input double iGlobalStop = 150;                  // --- Stop
 input double iGlobalTake = 200;                 // --- Take
+input double LotSize = 0.01;
+input int MagicNumber = 12345;
+
+CTrade trade;
+
 
 input group "◼ Controle";
 input bool iBuy = true;                         // --- Nova Entrada Buy
@@ -266,13 +271,31 @@ bool LoadIndicators(){
     return true;
 }
 
+bool checkPosition() {
+   for (int i = 0; i < PositionsTotal(); i++) {
+      if (PositionGetSymbol(i) == Symbol() && PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
+         return true;
+      }
+   }
+   return false;
+}
+
+bool checkFXSignal(double b3Signal) {
+   double fxSignal1M = iCustom(Symbol(), PERIOD_M1, "FX", 0, 1);
+   double fxSignal5M = iCustom(Symbol(), PERIOD_M5, "FX", 0, 1);
+
+   if (b3Signal > 0 && fxSignal1M > 0 && fxSignal5M > 0) {
+      return true;
+   } else if (b3Signal < 0 && fxSignal1M < 0 && fxSignal5M < 0) {
+      return true;
+   } else {
+      return false;
+   }
+}
+
+
 void OnTick()
 {
-   // Atualiza as informações de preço e tempo.
-   MqlRates mrate[];
-   ArraySetAsSeries(mrate, true);
-   CopyRates(Symbol(), PERIOD_CURRENT, 0, 1, mrate);
-
    // Verifica se há posição aberta.
    bool hasPosition = checkPosition();
 
@@ -283,48 +306,20 @@ void OnTick()
    bool fxSignalValid = checkFXSignal(b3Signal);
 
    // Se não houver posição aberta e os sinais do FX estiverem alinhados com o sinal do B3.
-   if (!hasPosition && fxSignalValid)
-   {
-      if (b3Signal > 0) // Sinal de compra
-      {
-         double ask = NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK), _Digits);
-         double stopLoss = 0.0;
-         double takeProfit = 0.0;
-
-         // Defina seu Stop Loss e Take Profit conforme necessário.
-
-         // Envia a ordem de compra.
-         ulong ticket = OrderSend(Symbol(), OP_BUY, LotSize, ask, 10, stopLoss, takeProfit, "Buy order", MagicNumber, 0, clrBlue);
-         if (ticket < 0)
-         {
+   if (!hasPosition && fxSignalValid) {
+      double ask = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+      double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+      double stopLoss = 0;
+      double takeProfit = 0;
+      
+      if (b3Signal > 0) { // Sinal de compra
+         if (trade.Buy(LotSize, Symbol(), ask, stopLoss, takeProfit, NULL, MagicNumber)) {
+            Print("Ordem de compra enviada com sucesso.");
+         } else {
             Print("Erro ao enviar a ordem de compra. Código de erro: ", GetLastError());
          }
-         else
-         {
-            Print("Ordem de compra enviada com sucesso. Ticket: ", ticket);
-         }
-      }
-      else if (b3Signal < 0) // Sinal de venda
-      {
-         double bid = NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID), _Digits);
-         double stopLoss = 0.0;
-         double takeProfit = 0.0;
-
-         // Defina seu Stop Loss e Take Profit conforme necessário.
-
-         // Envia a ordem de venda.
-         ulong ticket = OrderSend(Symbol(), OP_SELL, LotSize, bid, 10, stopLoss, takeProfit, "Sell order", MagicNumber, 0, clrRed);
-         if (ticket < 0)
-         {
-            Print("Erro ao enviar a ordem de venda. Código de erro: ", GetLastError());
-         }
-         else
-         {
-            Print("Ordem de venda enviada com sucesso. Ticket: ", ticket);
-         }
-      }
-   }
-}
+      } else if (b3Signal < 0) { // Sinal de venda
+         if (trade.Sell
 
 
 void OnTradeTransaction(const MqlTradeTransaction& trans,const MqlTradeRequest& request,const MqlTradeResult& result){
